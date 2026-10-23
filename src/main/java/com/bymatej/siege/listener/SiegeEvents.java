@@ -38,16 +38,18 @@ public final class SiegeEvents implements Listener {
         }
     }
 
-    /** VehicleMoveEvent cannot be cancelled; return a participant's vehicle to its previous legal position. */
+    /** Vehicles cannot carry enrolled players outside the combat boundary. */
     @EventHandler public void vehicle(VehicleMoveEvent event) {
         if (!game.combat() || !game.outside(event.getTo())) return;
         for (Entity passenger : event.getVehicle().getPassengers()) {
             if (passenger instanceof Player p && game.enrolled(p.getUniqueId())) {
-                Location destination = event.getFrom();
                 Bukkit.getScheduler().runTask(plugin, () -> {
-                    if (game.combat() && event.getVehicle().isValid()) event.getVehicle().teleport(destination);
+                    if (!game.combat() || !p.isOnline()) return;
+                    p.leaveVehicle();
+                    // Explicitly return the player inside the arena, rather than using
+                    // event.getFrom(), which may itself already be outside the circle.
+                    p.teleport(game.anchor());
                 });
-                break;
             }
         }
     }
