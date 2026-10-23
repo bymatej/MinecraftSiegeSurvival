@@ -14,7 +14,7 @@ import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.VehicleMoveEvent;
-import io.papermc.paper.event.player.PlayerPostRespawnEvent;
+import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
 
 public final class SiegeEvents implements Listener {
     private final SiegePlugin plugin;
@@ -28,8 +28,7 @@ public final class SiegeEvents implements Listener {
     public void movement(PlayerMoveEvent event) {
         if (!game.combat() || !game.enrolled(event.getPlayer().getUniqueId())) return;
         Location to = event.getTo();
-        if (to == null) return;
-        if (!game.outside(to)) return;
+        if (to == null || !game.outside(to)) return;
         if (event.getFrom().getWorld() != to.getWorld()
                 || event.getFrom().getX() != to.getX()
                 || event.getFrom().getZ() != to.getZ()) {
