@@ -43,6 +43,9 @@ public final class SiegeGame {
     private int pending;
     private int initialPlayers;
     private int noLivingSeconds;
+    private int failedSpawnSeconds;
+    private boolean chunksHeld;
+    private int waveSeconds;
 
     public SiegeGame(SiegePlugin plugin) {
         this.plugin = plugin;
@@ -101,8 +104,8 @@ public final class SiegeGame {
 
     public String saveAnchor(Player initiator) {
         if (running()) return "Anchor cannot be changed during a match.";
-        if (initiator.getWorld().getEnvironment() != World.Environment.NORMAL)
-            return "The anchor must be in the Overworld.";
+        if (!hasSafeFooting(initiator.getLocation()))
+            return "Stand on a safe solid block to set an anchor (Overworld, Nether or End).";
         draftAnchor = initiator.getLocation().getBlock().getRelative(org.bukkit.block.BlockFace.DOWN)
                 .getLocation().add(0.5, 1, 0.5);
         return "Anchor saved at " + coordinates(draftAnchor) + ".";
@@ -114,11 +117,14 @@ public final class SiegeGame {
         int max = plugin.getConfig().getInt("game.max-waves", 100);
         if (requestedWaves < 1 || requestedWaves > max) return "Wave count must be 1-" + max + ".";
         if (prepMinutes < 0 || prepMinutes > 240) return "Preparation must be between 0 and 240 minutes.";
-        if (initiator.getWorld().getEnvironment() != World.Environment.NORMAL)
-            return "Start a siege in the Overworld.";
+        if (!hasSafeFooting(initiator.getLocation()))
+            return "Stand on a safe solid floor to begin a siege (Overworld, Nether or End).";
         if (initiator.getWorld().getDifficulty() == Difficulty.PEACEFUL)
             return "Peaceful difficulty cannot support a siege. Change the world's difficulty first.";
         if (Bukkit.getOnlinePlayers().isEmpty()) return "No players are online.";
+        if (draftAnchor != null && prepMinutes == 0
+                && draftAnchor.getWorld() == initiator.getWorld() && !hasSafeFooting(draftAnchor))
+            return "Saved anchor is unsafe. Stand on a solid block and run /siege anchor again.";
         Location chosen = (prepMinutes > 0 || draftAnchor == null
                 || draftAnchor.getWorld() != initiator.getWorld())
                 ? initiator.getLocation().getBlock().getRelative(org.bukkit.block.BlockFace.DOWN).getLocation().add(0.5, 1, 0.5)
@@ -129,6 +135,9 @@ public final class SiegeGame {
         pending = 0;
         seconds = prepMinutes * 60;
         noLivingSeconds = 0;
+        failedSpawnSeconds = 0;
+        chunksHeld = false;
+        waveSeconds = 0;
         players.clear();
         visitors.clear();
         mobs.clear();
@@ -154,7 +163,13 @@ public final class SiegeGame {
     }
 
     private void beginWave() {
+        if (!chunksHeld) {
+            holdSpawnChunks();
+            chunksHeld = true;
+        }
         wave++;
+        waveSeconds = 0;
+        failedSpawnSeconds = 0;
         state = SiegeState.WAVE;
         seconds = 0;
         if (wave == 1) {
@@ -197,6 +212,12 @@ public final class SiegeGame {
             if (--seconds <= 0) beginWave();
             return;
         }
+        waveSeconds++;
+        int timeout = Math.max(120, plugin.getConfig().getInt("waves.max-wave-seconds", 600));
+        if (waveSeconds > timeout) {
+            stop("ABORTED: wave " + wave + " exceeded " + timeout + " seconds; some enemies may be unreachable.");
+            return;
+        }
         mobs.removeIf(id -> {
             Entity entity = Bukkit.getEntity(id);
             return entity == null || !entity.isValid() || entity.isDead();
@@ -204,10 +225,18 @@ public final class SiegeGame {
         int batch = plugin.getConfig().getInt("waves.spawn-batch-size", 5);
         int limit = plugin.getConfig().getInt("waves.max-active-mobs", 40);
         int attempts = Math.min(Math.min(batch, pending), Math.max(0, limit - mobs.size()));
+        int spawned = 0;
         for (int i = 0; i < attempts; i++) {
-            if (spawnEnemy()) pending--;
-            else break; // invalid spawn positions: try again next second rather than spawning in solids
+            if (spawnEnemy()) { pending--; spawned++; }
+            else break;
         }
+        if (pending > 0 && mobs.size() < limit) {
+            failedSpawnSeconds = spawned > 0 ? 0 : failedSpawnSeconds + 1;
+            if (failedSpawnSeconds >= 90) {
+                stop("ABORTED: no valid spawn site found for 90 seconds in " + anchor.getWorld().getEnvironment() + ".");
+                return;
+            }
+        } else failedSpawnSeconds = 0;
         if (pending == 0 && mobs.isEmpty()) {
             if (wave >= totalWaves) stop("VICTORY: final wave cleared");
             else {
@@ -218,25 +247,29 @@ public final class SiegeGame {
         }
     }
 
+    /**
+     * Restrict natural-surface spawning to loaded, previously generated chunks.
+     * Scanning vertically around the anchor is necessary in Nether caves and End islands:
+     * getHighestBlockAt() would select the Nether roof or empty End void.
+     */
     private boolean spawnEnemy() {
         List<EntityType> types = new ArrayList<>(allowed);
         if (types.isEmpty()) return false;
         int min = plugin.getConfig().getInt("arena.spawn-min-distance", 40);
         int max = plugin.getConfig().getInt("arena.spawn-max-distance", 72);
-        if (max < min || min < 8 || max >= plugin.getConfig().getInt("arena.combat-radius", 220))
+        if (min < 8 || max < min || max >= plugin.getConfig().getInt("arena.combat-radius", 220))
             return false;
         World world = Objects.requireNonNull(anchor.getWorld());
-        for (int attempt = 0; attempt < 18; attempt++) {
-            double direction = random.nextDouble() * Math.PI * 2;
-            double distance = min + random.nextDouble() * Math.max(1, max - min);
-            int x = anchor.getBlockX() + (int) Math.round(Math.cos(direction) * distance);
-            int z = anchor.getBlockZ() + (int) Math.round(Math.sin(direction) * distance);
-            if (!world.isChunkLoaded(x >> 4, z >> 4)) continue; // never synchronously generate terrain
-            Block floor = world.getHighestBlockAt(x, z);
-            Block feet = floor.getRelative(org.bukkit.block.BlockFace.UP);
-            if (!floor.getType().isSolid() || !feet.isPassable()
-                    || !feet.getRelative(org.bukkit.block.BlockFace.UP).isPassable()) continue;
-            Location spot = feet.getLocation().add(0.5, 0, 0.5);
+        for (int attempt = 0; attempt < 80; attempt++) {
+            double angle = random.nextDouble() * Math.PI * 2;
+            // Fallback toward the anchor in void-heavy End maps, but never right inside a base.
+            double minDistance = attempt < 40 ? min : Math.min(min, 16);
+            double distance = minDistance + random.nextDouble() * (max - minDistance);
+            int x = anchor.getBlockX() + (int) Math.round(Math.cos(angle) * distance);
+            int z = anchor.getBlockZ() + (int) Math.round(Math.sin(angle) * distance);
+            if (!world.isChunkLoaded(x >> 4, z >> 4)) continue;
+            Location spot = findSafeSurface(world, x, z, anchor.getBlockY(), 24);
+            if (spot == null) continue;
             Entity entity = world.spawnEntity(spot, types.get(random.nextInt(types.size())));
             if (!(entity instanceof Mob mob)) { entity.remove(); return false; }
             configureMob(mob);
@@ -244,6 +277,54 @@ public final class SiegeGame {
             return true;
         }
         return false;
+    }
+
+    private Location findSafeSurface(World world, int x, int z, int anchorY, int verticalReach) {
+        int lower = Math.max(world.getMinHeight() + 1, anchorY - verticalReach);
+        int upper = Math.min(world.getMaxHeight() - 3, anchorY + verticalReach);
+        // Prefer the elevation of the anchor, then nearby floors above and below.
+        for (int d = 0; d <= verticalReach; d++) {
+            int high = anchorY + d, low = anchorY - d;
+            if (high <= upper && safeStand(world, x, high, z))
+                return new Location(world, x + .5, high, z + .5);
+            if (d > 0 && low >= lower && safeStand(world, x, low, z))
+                return new Location(world, x + .5, low, z + .5);
+        }
+        return null;
+    }
+
+    private static boolean safeStand(World world, int x, int feetY, int z) {
+        if (feetY < world.getMinHeight() + 1 || feetY + 1 >= world.getMaxHeight()) return false;
+        Block floor = world.getBlockAt(x, feetY - 1, z);
+        Block feet = world.getBlockAt(x, feetY, z);
+        Block head = world.getBlockAt(x, feetY + 1, z);
+        Material type = floor.getType();
+        if (!type.isSolid() || type == Material.MAGMA_BLOCK || type == Material.CACTUS
+                || type == Material.BEDROCK || type.name().contains("PORTAL")) return false;
+        return floor.getBoundingBox().getHeight() > 0.75
+                && feet.getType().isAir() && head.getType().isAir();
+    }
+
+    private static boolean hasSafeFooting(Location location) {
+        World world = location.getWorld();
+        if (world == null) return false;
+        int y = location.getBlockY();
+        return safeStand(world, location.getBlockX(), y, location.getBlockZ());
+    }
+
+    private void holdSpawnChunks() {
+        World world = Objects.requireNonNull(anchor.getWorld());
+        int min = plugin.getConfig().getInt("arena.spawn-min-distance", 40);
+        int max = plugin.getConfig().getInt("arena.spawn-max-distance", 72);
+        int distance = (min + max) / 2;
+        world.addPluginChunkTicket(anchor.getBlockX() >> 4, anchor.getBlockZ() >> 4, plugin);
+        for (int index = 0; index < 32; index++) {
+            double angle = 2 * Math.PI * index / 32;
+            int chunkX = (anchor.getBlockX() + (int) Math.round(Math.cos(angle) * distance)) >> 4;
+            int chunkZ = (anchor.getBlockZ() + (int) Math.round(Math.sin(angle) * distance)) >> 4;
+            if (world.isChunkGenerated(chunkX, chunkZ))
+                world.addPluginChunkTicket(chunkX, chunkZ, plugin);
+        }
     }
 
     private void configureMob(Mob mob) {
@@ -355,6 +436,10 @@ public final class SiegeGame {
             if (e != null) e.remove();
         }
         mobs.clear();
+        if (chunksHeld && anchor != null && anchor.getWorld() != null) {
+            anchor.getWorld().removePluginChunkTickets(plugin);
+            chunksHeld = false;
+        }
         if (plugin.getConfig().getBoolean("arena.rollback-mob-damage", true)) blockJournal.restore();
         for (PlayerRecord record : players.values()) restore(record);
         for (PlayerRecord record : visitors.values()) restore(record);
