@@ -30,7 +30,7 @@ A cooperative, anchor-based survival siege minigame for **Paper 26.1+**. Players
 3. Copy `build/libs/MinecraftSiegeSurvival-*.jar` to a Paper server's `plugins/` directory.
 4. Restart the server and edit `plugins/SiegeSurvival/config.yml` as needed.
 
-Never test block-breaking features on a world without backups. The plugin does **not** promise complete terrain restoration.
+Never test block-breaking features on a world without backups. Mob-mined simple blocks are journaled for best-effort restoration on match end/restart, but the plugin does **not** promise complete terrain rollback.
 
 ## Commands
 
@@ -58,7 +58,7 @@ Movement boundary is **off** before the first wave, including throughout prepara
 - One match per server. Match participants are the online players at the start. The plugin does not create an isolated world.
 - A match can change the **existing survival world**. The radius restricts where the plugin itself breaks blocks; it is not an anti-grief plugin for ordinary players.
 - The initial mining implementation is limited and intentionally conservative; its timing is approximate rather than a verified replication of every vanilla enchantment/tool calculation.
-- Block changes are not restored automatically. Do not run an active siege on an irreplaceable base.
+- Mob-mined whitelisted blocks are recorded before removal and restored at cleanup/restart when still air (enabled by `arena.rollback-mob-damage`). Player edits, gravity, flowing liquids and other updates cannot be reliably reversed. Do not run an active siege on an irreplaceable base.
 - No creative mode during a match; original player game modes and locations are restored on normal cleanup.
 - Original game modes and locations are journaled to a server-local recovery file. They are restored on join or post-respawn after interruptions; terrain and inventory are not rolled back.
 - Other region protection plugins do not automatically authorize plugin-made block changes. Use an empty test world until integrated.
