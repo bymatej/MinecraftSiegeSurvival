@@ -35,7 +35,9 @@ Paper 26.1+ standalone Java 25 plugin. One active cooperative siege in an existi
 ## Development discipline
 
 - Implement small, reviewable milestones. Do not claim features are production ready without compiling and Paper integration testing.
-- Java 25 + Gradle Kotlin DSL + Paper API `26.1.2.build.74-stable` (if a newer verified stable build is selected, update docs/CI).
+- Java 25 + Gradle Kotlin DSL. Default local Paper API: `26.1.2.build.74-stable`; CI also validates `26.2.build.129-stable`.
+- Release builds pass `-PminecraftVersion=<MC>`, `-PpluginVersion=<MSS>` and `-PpaperApiVersion=<MC>.build.<N>-stable`. The JAR and release tag are both `MSS-<MC>.<MSS>`; the expanded `plugin.yml` must contain the selected versions.
+- Releases are published manually using `.github/workflows/release.yml`. Never auto-publish from an ordinary push, overwrite a prior tag, or embed tokens in tracked files.
 - Prefer Paper API over NMS. Do not silently disable permissions or protection integrations.
 - Update README when features or limitations change; add unit tests for deterministic logic.
 - Never commit secrets, tokens, private keys, world saves, local test-server directories or player-specific files. `.gitignore` is defense-in-depth, not permission to stage secrets.
