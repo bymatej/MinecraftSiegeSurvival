@@ -43,6 +43,8 @@ public final class SiegeGame {
     private int pending;
     private int initialPlayers;
     private int noLivingSeconds;
+    private int failedSpawnSeconds;
+    private boolean spawnChunksPrepared;
 
     public SiegeGame(SiegePlugin plugin) {
         this.plugin = plugin;
@@ -129,6 +131,8 @@ public final class SiegeGame {
         pending = 0;
         seconds = prepMinutes * 60;
         noLivingSeconds = 0;
+        failedSpawnSeconds = 0;
+        spawnChunksPrepared = false;
         players.clear();
         visitors.clear();
         mobs.clear();
@@ -154,7 +158,12 @@ public final class SiegeGame {
     }
 
     private void beginWave() {
+        if (!spawnChunksPrepared) {
+            prepareSpawnChunks();
+            spawnChunksPrepared = true;
+        }
         wave++;
+        failedSpawnSeconds = 0;
         state = SiegeState.WAVE;
         seconds = 0;
         if (wave == 1) {
@@ -169,6 +178,24 @@ public final class SiegeGame {
                 plugin.getConfig().getDouble("waves.player-scaling", 0.45));
         pending = count;
         broadcast("Wave " + wave + "/" + totalWaves + " begins! " + count + " enemies incoming.");
+    }
+
+    /**
+     * Hold a small number of previously generated chunks around the spawn ring.
+     * Never generate new terrain just to spawn a wave.
+     */
+    private void prepareSpawnChunks() {
+        World world = Objects.requireNonNull(anchor.getWorld());
+        world.addPluginChunkTicket(anchor.getBlockX() >> 4, anchor.getBlockZ() >> 4, plugin);
+        int min = plugin.getConfig().getInt("arena.spawn-min-distance", 40);
+        int max = plugin.getConfig().getInt("arena.spawn-max-distance", 72);
+        int distance = (min + max) / 2;
+        for (int i = 0; i < 16; i++) {
+            double angle = 2 * Math.PI * i / 16;
+            int x = (anchor.getBlockX() + (int) Math.round(distance * Math.cos(angle))) >> 4;
+            int z = (anchor.getBlockZ() + (int) Math.round(distance * Math.sin(angle))) >> 4;
+            if (world.isChunkGenerated(x, z)) world.addPluginChunkTicket(x, z, plugin);
+        }
     }
 
     public void tick() {
@@ -204,10 +231,19 @@ public final class SiegeGame {
         int batch = plugin.getConfig().getInt("waves.spawn-batch-size", 5);
         int limit = plugin.getConfig().getInt("waves.max-active-mobs", 40);
         int attempts = Math.min(Math.min(batch, pending), Math.max(0, limit - mobs.size()));
+        int spawned = 0;
         for (int i = 0; i < attempts; i++) {
-            if (spawnEnemy()) pending--;
-            else break; // invalid spawn positions: try again next second rather than spawning in solids
+            if (spawnEnemy()) { pending--; spawned++; }
+            else break;
         }
+        if (pending > 0 && mobs.size() < limit) {
+            failedSpawnSeconds = spawned > 0 ? 0 : failedSpawnSeconds + 1;
+            if (failedSpawnSeconds >= 90) {
+                plugin.getLogger().severe("Siege aborted: no valid enemy spawn position for 90 seconds.");
+                stop("ABORTED: cannot find safe mob spawn positions; check arena and spawn radius.");
+                return;
+            }
+        } else failedSpawnSeconds = 0;
         if (pending == 0 && mobs.isEmpty()) {
             if (wave >= totalWaves) stop("VICTORY: final wave cleared");
             else {
@@ -355,6 +391,10 @@ public final class SiegeGame {
             if (e != null) e.remove();
         }
         mobs.clear();
+        if (anchor != null && anchor.getWorld() != null)
+            anchor.getWorld().removePluginChunkTickets(plugin);
+        spawnChunksPrepared = false;
+        failedSpawnSeconds = 0;
         if (plugin.getConfig().getBoolean("arena.rollback-mob-damage", true)) blockJournal.restore();
         for (PlayerRecord record : players.values()) restore(record);
         for (PlayerRecord record : visitors.values()) restore(record);
