@@ -10,12 +10,12 @@ on:
         type: string
         default: '26.2'
       plugin_version:
-        description: 'MSS plugin version, e.g. 1.1'
+        description: 'Plugin version, e.g. 0.1-beta or 1.1'
         required: true
         type: string
-        default: '1.1'
+        default: '0.1-beta'
       paper_build:
-        description: 'Stable Paper API build suffix, e.g. 129-stable for 26.2'
+        description: 'Stable Paper API build suffix, e.g. 129-stable for 26.2 (verify against Paper)'
         required: true
         type: string
         default: '129-stable'
@@ -54,7 +54,7 @@ jobs:
             exit 1
           fi
           if [[ ! "$PLUGIN_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo 'Plugin version must look like 1.1 or 1.1.2.' >&2
+            echo 'Plugin version must look like 0.1-beta, 1.1 or 1.1.2.' >&2
             exit 1
           fi
           if [[ ! "$PAPER_BUILD" =~ ^[1-9][0-9]*-stable$ ]]; then
@@ -151,7 +151,7 @@ jobs:
           Back up your world before testing. Read the repository README for limitations.
           EOF
           flags=()
-          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
+          if [[ "$PRERELEASE" == true || "$PLUGIN_VERSION" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$RELEASE_TAG" "build/libs/$RELEASE_TAG.jar" \
             --title "$RELEASE_TAG" --target "$GITHUB_SHA" \
             --notes-file release-notes.md "${flags[@]}"
