@@ -50,7 +50,7 @@ public final class SiegeBrain {
             if (!(entity instanceof Mob mob) || !mob.isValid() || mob.isDead()) continue;
             if (mob.getWorld() != anchor.getWorld()) continue;
             Memory memory = memories.computeIfAbsent(id, unused -> new Memory(mob.getLocation()));
-            Player target = chooseTarget(mob);
+            Player target = chooseTarget(mob, memory);
             if (target != null) {
                 mob.setTarget(target);
                 memory.stillTicks = 0;
@@ -101,13 +101,21 @@ public final class SiegeBrain {
         }
     }
 
-    private Player chooseTarget(Mob mob) {
+    private Player chooseTarget(Mob mob, Memory memory) {
         Player current = mob.getTarget() instanceof Player player ? player : null;
         double pursuit = plugin.getConfig().getDouble("ai.pursuit-radius", 20);
         if (current != null && game.alive(current.getUniqueId())
                 && current.getWorld() == mob.getWorld()
-                && current.getLocation().distanceSquared(mob.getLocation()) <= pursuit * pursuit)
-            return current;
+                && current.getLocation().distanceSquared(mob.getLocation()) <= pursuit * pursuit) {
+            if (mob.hasLineOfSight(current)) {
+                memory.lostTargetTicks = 0;
+                return current;
+            }
+            // A player hiding behind a wall must not indefinitely distract the siege.
+            int maxLost = Math.max(1, plugin.getConfig().getInt("ai.lost-target-seconds", 6)) * 2;
+            if (++memory.lostTargetTicks < maxLost) return current;
+        }
+        memory.lostTargetTicks = 0;
         double radius = plugin.getConfig().getDouble("ai.detection-radius", 12);
         Player nearest = null;
         double nearestDistance = radius * radius;
@@ -236,6 +244,7 @@ public final class SiegeBrain {
         int stillTicks;
         int pathTick;
         int breakTicks;
+        int lostTargetTicks;
         Memory(Location initial) { last = initial.clone(); }
     }
 }
