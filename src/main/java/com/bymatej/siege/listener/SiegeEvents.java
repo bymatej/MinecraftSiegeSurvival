@@ -12,6 +12,8 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.CreatureSpawnEvent;
 import org.bukkit.event.entity.EntityTargetLivingEntityEvent;
 import org.bukkit.event.entity.PlayerDeathEvent;
+import org.bukkit.event.entity.EntityPortalEvent;
+import org.bukkit.event.entity.EntityTransformEvent;
 import org.bukkit.event.player.*;
 import org.bukkit.event.vehicle.VehicleMoveEvent;
 import com.destroystokyo.paper.event.player.PlayerPostRespawnEvent;
@@ -102,6 +104,17 @@ public final class SiegeEvents implements Listener {
                     event.setCancelled(true);
             default -> { }
         }
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void siegeMobPortal(EntityPortalEvent event) {
+        if (game.isSiegeMob(event.getEntity())) event.setCancelled(true);
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void siegeMobTransform(EntityTransformEvent event) {
+        // Entity replacement would lose the UUID-based wave tracking and cause false clears.
+        if (game.isSiegeMob(event.getEntity())) event.setCancelled(true);
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
