@@ -1,6 +1,7 @@
 package com.bymatej.siege.game;
 
 import com.bymatej.siege.SiegePlugin;
+import com.bymatej.siege.arena.BlockJournal;
 import org.bukkit.Bukkit;
 import org.bukkit.Difficulty;
 import org.bukkit.GameMode;
@@ -26,6 +27,7 @@ public final class SiegeGame {
     private final SiegePlugin plugin;
     private final NamespacedKey mobTag;
     private final RecoveryStore recovery;
+    private final BlockJournal blockJournal;
     private final Random random = new Random();
     private final LinkedHashMap<UUID, PlayerRecord> players = new LinkedHashMap<>();
     private final Map<UUID, PlayerRecord> visitors = new LinkedHashMap<>();
@@ -45,6 +47,8 @@ public final class SiegeGame {
     public SiegeGame(SiegePlugin plugin) {
         this.plugin = plugin;
         this.recovery = new RecoveryStore(plugin);
+        this.blockJournal = new BlockJournal(plugin);
+        this.blockJournal.restore(); // Recover uncommitted mob damage after server restart.
         this.mobTag = new NamespacedKey(plugin, "siege_match_mob");
         this.radius = plugin.getConfig().getInt("arena.movement-radius", 200);
         if (plugin.getConfig().getBoolean("mobs.zombie", true)) allowed.add(EntityType.ZOMBIE);
@@ -66,6 +70,9 @@ public final class SiegeGame {
     public int secondsRemaining() { return seconds; }
     public int radius() { return radius; }
     public Location anchor() { return anchor == null ? null : anchor.clone(); }
+    public boolean journalMobBreak(Block block) {
+        return !plugin.getConfig().getBoolean("arena.rollback-mob-damage", true) || blockJournal.record(block);
+    }
     public boolean isSiegeMob(Entity e) { return mobs.contains(e.getUniqueId()); }
     public Set<UUID> mobIds() { return Set.copyOf(mobs); }
     public boolean enrolled(UUID uuid) { return players.containsKey(uuid) || visitors.containsKey(uuid); }
@@ -348,6 +355,7 @@ public final class SiegeGame {
             if (e != null) e.remove();
         }
         mobs.clear();
+        if (plugin.getConfig().getBoolean("arena.rollback-mob-damage", true)) blockJournal.restore();
         for (PlayerRecord record : players.values()) restore(record);
         for (PlayerRecord record : visitors.values()) restore(record);
         players.clear(); visitors.clear();
