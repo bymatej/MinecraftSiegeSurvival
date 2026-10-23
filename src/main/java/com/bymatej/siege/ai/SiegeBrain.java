@@ -64,7 +64,7 @@ public final class SiegeBrain {
             if (current.distanceSquared(memory.last) < 0.12) memory.stillTicks++;
             else memory.stillTicks = 0;
             memory.last = current.clone();
-            if (current.distanceSquared(anchor) < 10) continue;
+            // Even close to the anchor a fortification may obstruct the final steps.
 
             if (memory.stillTicks >= 4 && plugin.getConfig().getBoolean("ai.door-opening", true)) {
                 Block obstacle = forwardBlock(mob, anchor);
@@ -73,7 +73,7 @@ public final class SiegeBrain {
                     continue;
                 }
             }
-            if (memory.stillTicks >= 8 && miningSlots > 0
+            if ((memory.stillTicks >= 8 || memory.breakTarget != null) && miningSlots > 0
                     && plugin.getConfig().getBoolean("mining.enabled", false)
                     && game.insideDestruction(current)) {
                 if (tryMine(mob, anchor, memory)) miningSlots--;
@@ -145,6 +145,12 @@ public final class SiegeBrain {
         if (memory.breakTarget == null || !memory.breakTarget.equals(target)) {
             memory.breakTarget = target.clone();
             memory.breakTicks = 0;
+            memory.breakBlockData = block.getBlockData().getAsString();
+        }
+        if (!block.getBlockData().getAsString().equals(memory.breakBlockData)) {
+            memory.breakTarget = null;
+            memory.breakTicks = 0;
+            return false;
         }
         ItemStack tool = Objects.requireNonNull(mob.getEquipment()).getItemInMainHand();
         int requiredTicks = Math.max(CONTROL_INTERVAL_TICKS, MiningPolicy.estimatedTicks(block, tool));
@@ -163,7 +169,9 @@ public final class SiegeBrain {
             }
             SiegeBlockBreakEvent event = new SiegeBlockBreakEvent(mob, block);
             Bukkit.getPluginManager().callEvent(event);
-            if (!event.isCancelled()) block.setType(Material.AIR, true);
+            if (!event.isCancelled() && game.journalMobBreak(block)) {
+                block.setType(Material.AIR, false); // No drops, no neighbor updates where possible.
+            }
             memory.breakTarget = null;
             memory.breakTicks = 0;
             memory.stillTicks = 0;
@@ -175,6 +183,7 @@ public final class SiegeBrain {
     private static final class Memory {
         Location last;
         Location breakTarget;
+        String breakBlockData;
         int stillTicks;
         int pathTick;
         int breakTicks;
