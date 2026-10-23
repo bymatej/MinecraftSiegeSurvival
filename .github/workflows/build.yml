@@ -8,6 +8,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - minecraft: '26.1'
+            paper_api: '26.1.2.build.74-stable'
+          - minecraft: '26.2'
+            paper_api: '26.2.build.129-stable'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -18,9 +26,15 @@ jobs:
         with:
           gradle-version: '9.2.1'
       - name: Compile and test
-        run: gradle clean build --no-daemon
+        env:
+          MC_VERSION: ${{ matrix.minecraft }}
+          PAPER_API: ${{ matrix.paper_api }}
+        run: |
+          gradle clean build --no-daemon \
+            "-PminecraftVersion=$MC_VERSION" \
+            "-PpaperApiVersion=$PAPER_API"
       - uses: actions/upload-artifact@v4
         if: success()
         with:
-          name: SiegeSurvival-dev
+          name: SiegeSurvival-dev-${{ matrix.minecraft }}
           path: build/libs/*.jar
