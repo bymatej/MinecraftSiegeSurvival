@@ -4,14 +4,14 @@ This file is the canonical agent context. `AGENTS.md` is a **Git symlink** point
 
 ## Mission and invariants
 
-Paper 26.1+ standalone Java 25 plugin. One active cooperative siege in an existing survival world. Players prepare without movement restrictions; once wave 1 begins, a configurable circular anchor-centered boundary applies to living participants until the game ends. Mobs prefer the anchor, fight nearby living players, and resume moving toward the anchor. Only tool-equipped mobs may mine whitelisted obstacles. Players have one life; a final wave clear wins, all players eliminated loses.
+Paper 26.1+ standalone Java 25 plugin supporting Overworld, Nether, and End. Same selected zombies/skeletons/pillagers in all worlds. One active cooperative siege in an existing survival world. Players prepare without movement restrictions; once wave 1 begins, a configurable circular anchor-centered boundary applies to living participants until the game ends. Mobs prefer the anchor, fight nearby living players, and resume moving toward the anchor. Only tool-equipped mobs may mine whitelisted obstacles. Players have one life; a final wave clear wins, all players eliminated loses.
 
 ## Commands and boundaries
 
 - `/siege anchor`, `/siege setup`, `/siege start [waves]`, `/siege start prep [minutes] [waves]`, `/siege radius <blocks>`, `/siege status`, `/siege stop`.
 - Do not globally modify game difficulty, weather, time, game rules, or world border.
 - Do not interfere with players outside the active siege except for the explicitly server-wide participation contract.
-- Don't teleport or restrict players during preparation except initial enrollment teleport.
+- Don't restrict players during preparation except initial teleport to initiator; on wave 1 return players from other dimensions/outside the radius to anchor.
 - Use server-thread Bukkit/Paper APIs only on proper scheduler threads.
 - Validate all match state changes; clean up tasks and tagged mobs on stop.
 - Only blocks within the mining/destruction radius may be altered by custom AI; never break inventories, protected blocks or unknown materials.
@@ -31,6 +31,7 @@ Paper 26.1+ standalone Java 25 plugin. One active cooperative siege in an existi
 6. Correct mob registration, incremental spawning and cleanup.
 7. Doors, tool eligibility, protected blocks, no mining outside the configured zone, and pathfinding under obstructed structures.
 8. Survival mode restoration, reconnect handling and server crash recovery.
+9. Nether roof/void, cave floors and End islands: validate safe spawn elevations and never spawn into unsupported spaces.
 
 ## Development discipline
 
