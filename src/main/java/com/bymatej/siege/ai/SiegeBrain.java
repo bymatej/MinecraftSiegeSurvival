@@ -79,6 +79,21 @@ public final class SiegeBrain {
                     && plugin.getConfig().getBoolean("mining.enabled", false)) {
                 // Bound planner work: only a few miners can search each control tick.
                 if (miningSlots > 0) {
+                    // Keep working on the same obstruction rather than running A*
+                    // on every half-second block-breaking progress update.
+                    if (memory.breakTarget != null
+                            && memory.breakTarget.getWorld() == mob.getWorld()
+                            && mob.getLocation().distanceSquared(memory.breakTarget.clone().add(.5, .5, .5)) <= 10.0) {
+                        Block activeBlock = mob.getWorld().getBlockAt(memory.breakTarget);
+                        if (MiningPolicy.mayBreak(mob, activeBlock)
+                                && game.insideDestruction(activeBlock.getLocation())) {
+                            tryMine(mob, anchor, memory, activeBlock);
+                            miningSlots--;
+                            continue;
+                        }
+                        memory.breakTarget = null;
+                        memory.breakTicks = 0;
+                    }
                     BreachPlanner.Plan plan = planner.find(mob, anchor);
                     if (plan != null && plan.breakThis() != null) {
                         Block targetBlock = plan.breakThis();
