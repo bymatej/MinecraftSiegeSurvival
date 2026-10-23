@@ -147,7 +147,8 @@ public final class SiegeGame {
             recovery.remember(record);
         }
         initialPlayers = players.size();
-        state = prepMinutes > 0 ? SiegeState.PREPARING : SiegeState.INTERMISSION;
+        // The movement boundary must remain inactive during initial player gathering.
+        state = SiegeState.PREPARING;
         Location rendezvous = initiator.getLocation().clone();
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.leaveVehicle();
