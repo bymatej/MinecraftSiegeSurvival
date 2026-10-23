@@ -1,10 +1,10 @@
 name: SiegeSurvival
-version: '0.1.0-SNAPSHOT'
+version: '${pluginVersion}'
 main: com.bymatej.siege.SiegePlugin
 description: Cooperative wave-based survival siege minigame
 author: bymatej
 website: https://github.com/bymatej/MinecraftSiegeSurvival
-api-version: '26.1'
+api-version: '${minecraftVersion}'
 commands:
   siege:
     description: Configure, start and manage a siege
