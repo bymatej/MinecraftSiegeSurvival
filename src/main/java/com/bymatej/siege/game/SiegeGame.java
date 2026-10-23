@@ -132,9 +132,10 @@ public final class SiegeGame {
         }
         initialPlayers = players.size();
         state = prepMinutes > 0 ? SiegeState.PREPARING : SiegeState.INTERMISSION;
+        Location rendezvous = initiator.getLocation().clone();
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.leaveVehicle();
-            player.teleport(anchor);
+            player.teleport(rendezvous); // All participants meet at the initiating player.
             player.setGameMode(GameMode.SURVIVAL);
         }
         if (prepMinutes > 0) {
