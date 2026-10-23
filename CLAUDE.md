@@ -15,7 +15,7 @@ Paper 26.1+ standalone Java 25 plugin. One active cooperative siege in an existi
 - Use server-thread Bukkit/Paper APIs only on proper scheduler threads.
 - Validate all match state changes; clean up tasks and tagged mobs on stop.
 - Only blocks within the mining/destruction radius may be altered by custom AI; never break inventories, protected blocks or unknown materials.
-- Player and world backups are essential; no blanket rollback promises.
+- Player and world backups are essential. Mob-mined simple block changes use the append-only BlockJournal with best-effort reverse restoration; no blanket rollback promises.
 
 ## Source layout and design
 
