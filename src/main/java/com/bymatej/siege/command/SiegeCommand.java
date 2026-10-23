@@ -104,8 +104,12 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
         if (plugin.getConfig().getBoolean("permissions.require-admin", true)
                 && !player.hasPermission("siege.admin")) return;
         player.sendMessage(game.toggle(type));
-        player.closeInventory();
-        showMenu(player);
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (player.isOnline()) {
+                player.closeInventory();
+                showMenu(player);
+            }
+        });
     }
 
     @Override public List<String> onTabComplete(CommandSender sender, Command command,

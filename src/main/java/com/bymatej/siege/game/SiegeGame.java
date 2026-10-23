@@ -354,12 +354,14 @@ public final class SiegeGame {
             player.setGameMode(record.gameMode());
         } else {
             // Post-respawn restoration is required for a player who died on the final tick.
-            Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                if (!running() && player.isOnline() && !player.isDead()) {
-                    player.teleport(record.before());
-                    player.setGameMode(record.gameMode());
-                }
-            }, 40L);
+            if (plugin.isEnabled()) {
+                Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                    if (!running() && player.isOnline() && !player.isDead()) {
+                        player.teleport(record.before());
+                        player.setGameMode(record.gameMode());
+                    }
+                }, 40L);
+            }
         }
     }
 
