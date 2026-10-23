@@ -1,0 +1,35 @@
+# Siege Survival: defaults. Always back up the world before enabling mining.
+permissions:
+  require-admin: true
+game:
+  default-waves: 25
+  max-waves: 100
+  preparation-minutes: 10
+  intermission-seconds: 30
+  reconnect-grace-seconds: 60
+arena:
+  movement-radius: 200
+  combat-radius: 220
+  destruction-radius: 64
+  spawn-min-distance: 40
+  spawn-max-distance: 72
+  natural-spawns: false
+waves:
+  base-enemies: 5
+  growth-per-wave: 1.3
+  player-scaling: 0.45
+  max-enemies-per-wave: 120
+  max-active-mobs: 40
+  spawn-batch-size: 5
+mobs:
+  zombie: true
+  skeleton: true
+  pillager: true
+ai:
+  detection-radius: 12
+  pursuit-radius: 20
+  lost-target-seconds: 6
+  door-opening: true
+mining:
+  enabled: false # EXPERIMENTAL. Enable only on a disposable/backed-up world.
+  max-concurrent-miners: 8
