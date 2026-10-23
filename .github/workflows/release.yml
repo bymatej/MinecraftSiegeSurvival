@@ -145,7 +145,7 @@ jobs:
           - **Compiled against:** Paper API $PAPER_API
           - **Required Java:** 25
 
-          Download `$RELEASE_TAG.jar` and place it in the Paper server's `plugins/` folder.
+          Download the $RELEASE_TAG.jar asset and place it in the Paper server plugins/ folder.
 
           **Important:** Siege block mining and complex fortress pathfinding are experimental.
           Back up your world before testing. Read the repository README for limitations.
