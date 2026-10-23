@@ -183,10 +183,17 @@ public final class SiegeBrain {
                 memory.breakTarget = null;
                 return true;
             }
-            SiegeBlockBreakEvent event = new SiegeBlockBreakEvent(mob, block);
-            Bukkit.getPluginManager().callEvent(event);
-            if (!event.isCancelled() && game.journalMobBreak(block)) {
-                block.setType(Material.AIR, false); // No drops, no neighbor updates where possible.
+            if (!regionProtectionDetected() && canBreakEntireStructure(mob, block)) {
+                SiegeBlockBreakEvent event = new SiegeBlockBreakEvent(mob, block);
+                Bukkit.getPluginManager().callEvent(event);
+                if (!event.isCancelled() && game.journalMobBreak(block)) {
+                    Block other = matchingDoorHalf(block);
+                    if (other == null || game.journalMobBreak(other)) {
+                        // Multi-block doors must be journaled and broken as a unit.
+                        block.setType(Material.AIR, false);
+                        if (other != null) other.setType(Material.AIR, false);
+                    }
+                }
             }
             memory.breakTarget = null;
             memory.breakTicks = 0;
@@ -194,6 +201,32 @@ public final class SiegeBrain {
             mob.getPathfinder().moveTo(anchor, 1.0);
         }
         return true;
+    }
+
+    private boolean regionProtectionDetected() {
+        if (!plugin.getConfig().getBoolean("mining.deny-if-protection-plugin-present", true))
+            return false;
+        // Never bypass claims by assuming a plugin-issued BlockBreakEvent is a player break.
+        for (String name : List.of("WorldGuard", "GriefPrevention", "Lands", "Towny",
+                "Residence", "GriefDefender", "ClaimChunk")) {
+            if (Bukkit.getPluginManager().getPlugin(name) != null) return true;
+        }
+        return false;
+    }
+
+    private boolean canBreakEntireStructure(Mob mob, Block block) {
+        Block other = matchingDoorHalf(block);
+        return other == null || (game.insideDestruction(other.getLocation())
+                && MiningPolicy.mayBreak(mob, other));
+    }
+
+    private Block matchingDoorHalf(Block block) {
+        BlockData data = block.getBlockData();
+        if (!(data instanceof org.bukkit.block.data.type.Door door)) return null;
+        Block other = block.getRelative(door.getHalf() == Bisected.Half.TOP
+                ? BlockFace.DOWN : BlockFace.UP);
+        if (other.getType() != block.getType()) return null;
+        return other;
     }
 
     private static final class Memory {
