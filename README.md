@@ -27,8 +27,41 @@ A cooperative, anchor-based survival siege minigame for **Paper 26.1+**. Players
 
 1. Install JDK 25 and Gradle 9+.
 2. Run `gradle clean build` from the repository root.
-3. Copy `build/libs/MinecraftSiegeSurvival-*.jar` to a Paper server's `plugins/` directory.
+3. Copy the matching `build/libs/MSS-*.jar` to a Paper server's `plugins/` directory.
 4. Restart the server and edit `plugins/SiegeSurvival/config.yml` as needed.
+
+### Building for a specific Minecraft version
+
+The Minecraft/Paper version and the plugin version are independent. For example, the following builds plugin **1.1** against **Paper 26.2**, embedding these values into `plugin.yml` and producing `MSS-26.2.1.1.jar`:
+
+```sh
+gradle clean build -PminecraftVersion=26.2 -PpluginVersion=1.1 -PpaperApiVersion=26.2.build.129-stable
+```
+
+Pin a **real stable Paper API build for that Minecraft version**; changing the artifact filename alone does not make a plugin compatible with a new Minecraft version.
+
+### Publishing a GitHub Release
+
+1. Ensure `main` passes CI and the target Paper version has been tested on an actual server.
+2. Open **[Actions → Publish versioned release](https://github.com/bymatej/MinecraftSiegeSurvival/actions/workflows/release.yml)**.
+3. Click **Run workflow**, select branch `main`, then enter:
+   - **Minecraft version:** `26.2`
+   - **Plugin version:** `1.1`
+   - **Paper build:** `129-stable` (must match the target Minecraft version)
+   - **Pre-release:** enabled until gameplay has passed Paper integration tests.
+4. The workflow validates the inputs, builds on Java 25, runs the tests, checks `plugin.yml` inside the JAR, and creates a GitHub Release.
+
+**Exact example:**
+
+| Release property | Value |
+|---|---|
+| Git tag | `MSS-26.2.1.1` |
+| Release title | `MSS-26.2.1.1` |
+| Downloaded JAR | `MSS-26.2.1.1.jar` |
+| In-game plugin version | `1.1` |
+| Minecraft API version | `26.2` |
+
+The workflow is deliberately **manual**; normal pushes do not publish releases. Existing release tags are never overwritten. It uses GitHub's ephemeral `GITHUB_TOKEN` with only the required repository content permission; no personal token or secret is committed.
 
 Never test block-breaking features on a world without backups. Mob-mined simple blocks are journaled for best-effort restoration on match end/restart, but the plugin does **not** promise complete terrain rollback.
 
@@ -71,7 +104,7 @@ See [CLAUDE.md](CLAUDE.md) (also exposed via `AGENTS.md`) for coding-agent guida
 
 ### CI
 
-GitHub Actions compiles the plugin on JDK 25 and runs unit tests; this is not a substitute for integration testing in a running Paper server.
+GitHub Actions builds against pinned Paper 26.1 and 26.2 APIs on JDK 25 and runs unit tests. These checks are not a substitute for integration testing in a running Paper server.
 
 ## License
 
