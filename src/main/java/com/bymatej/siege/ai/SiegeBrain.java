@@ -26,11 +26,13 @@ public final class SiegeBrain {
     private static final int CONTROL_INTERVAL_TICKS = 10;
     private final SiegePlugin plugin;
     private final SiegeGame game;
+    private final BreachPlanner planner;
     private final Map<UUID, Memory> memories = new HashMap<>();
 
     public SiegeBrain(SiegePlugin plugin, SiegeGame game) {
         this.plugin = plugin;
         this.game = game;
+        this.planner = new BreachPlanner(game);
     }
 
     public void tick() {
@@ -73,10 +75,25 @@ public final class SiegeBrain {
                     continue;
                 }
             }
-            if ((memory.stillTicks >= 8 || memory.breakTarget != null) && miningSlots > 0
-                    && plugin.getConfig().getBoolean("mining.enabled", false)
-                    && game.insideDestruction(current)) {
-                if (tryMine(mob, anchor, memory)) miningSlots--;
+            if ((memory.stillTicks >= 8 || memory.breakTarget != null)
+                    && plugin.getConfig().getBoolean("mining.enabled", false)) {
+                // Bound planner work: only a few miners can search each control tick.
+                if (miningSlots > 0) {
+                    BreachPlanner.Plan plan = planner.find(mob, anchor);
+                    if (plan != null && plan.breakThis() != null) {
+                        Block targetBlock = plan.breakThis();
+                        if (mob.getLocation().distanceSquared(targetBlock.getLocation().add(.5, .5, .5)) <= 10.0) {
+                            tryMine(mob, anchor, memory, targetBlock);
+                        } else if (plan.standHere().distanceSquared(mob.getLocation()) > 1) {
+                            mob.getPathfinder().moveTo(plan.standHere(), 1.0);
+                        }
+                        miningSlots--;
+                    } else if (plan != null && plan.standHere() != null) {
+                        mob.getPathfinder().moveTo(plan.standHere(), 1.0);
+                        memory.breakTarget = null;
+                        memory.breakTicks = 0;
+                    }
+                }
             } else {
                 memory.breakTarget = null;
                 memory.breakTicks = 0;
@@ -137,8 +154,7 @@ public final class SiegeBrain {
         return true;
     }
 
-    private boolean tryMine(Mob mob, Location anchor, Memory memory) {
-        Block block = forwardBlock(mob, anchor);
+    private boolean tryMine(Mob mob, Location anchor, Memory memory, Block block) {
         if (block == null || !game.insideDestruction(block.getLocation())) return false;
         if (!MiningPolicy.mayBreak(mob, block)) return false;
         Location target = block.getLocation();
