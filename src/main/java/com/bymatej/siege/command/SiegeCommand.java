@@ -9,6 +9,7 @@ import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.*;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -32,8 +33,13 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
         }
         String action = args[0].toLowerCase(Locale.ROOT);
         if (action.equals("status")) { sender.sendMessage(game.status()); return true; }
+        if (action.equals("stop") && !(sender instanceof Player)) {
+            if (game.running()) game.stop("Match stopped from server console.");
+            else sender.sendMessage("No match is active.");
+            return true;
+        }
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Only a player can run siege setup/start/stop commands.");
+            sender.sendMessage("Only a player can set up or start a siege.");
             return true;
         }
         if (plugin.getConfig().getBoolean("permissions.require-admin", true)
@@ -87,6 +93,10 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
         meta.setDisplayName(name + (enabled ? " [ENABLED]" : " [DISABLED]"));
         item.setItemMeta(meta);
         inventory.setItem(slot, item);
+    }
+
+    @EventHandler public void onClose(InventoryCloseEvent event) {
+        menus.remove(event.getInventory());
     }
 
     @EventHandler public void onClick(InventoryClickEvent event) {

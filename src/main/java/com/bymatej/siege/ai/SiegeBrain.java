@@ -26,11 +26,13 @@ public final class SiegeBrain {
     private static final int CONTROL_INTERVAL_TICKS = 10;
     private final SiegePlugin plugin;
     private final SiegeGame game;
+    private final BreachPlanner planner;
     private final Map<UUID, Memory> memories = new HashMap<>();
 
     public SiegeBrain(SiegePlugin plugin, SiegeGame game) {
         this.plugin = plugin;
         this.game = game;
+        this.planner = new BreachPlanner(game);
     }
 
     public void tick() {
@@ -48,7 +50,7 @@ public final class SiegeBrain {
             if (!(entity instanceof Mob mob) || !mob.isValid() || mob.isDead()) continue;
             if (mob.getWorld() != anchor.getWorld()) continue;
             Memory memory = memories.computeIfAbsent(id, unused -> new Memory(mob.getLocation()));
-            Player target = chooseTarget(mob);
+            Player target = chooseTarget(mob, memory);
             if (target != null) {
                 mob.setTarget(target);
                 memory.stillTicks = 0;
@@ -73,10 +75,40 @@ public final class SiegeBrain {
                     continue;
                 }
             }
-            if ((memory.stillTicks >= 8 || memory.breakTarget != null) && miningSlots > 0
-                    && plugin.getConfig().getBoolean("mining.enabled", false)
-                    && game.insideDestruction(current)) {
-                if (tryMine(mob, anchor, memory)) miningSlots--;
+            if ((memory.stillTicks >= 8 || memory.breakTarget != null)
+                    && plugin.getConfig().getBoolean("mining.enabled", false)) {
+                // Bound planner work: only a few miners can search each control tick.
+                if (miningSlots > 0) {
+                    // Keep working on the same obstruction rather than running A*
+                    // on every half-second block-breaking progress update.
+                    if (memory.breakTarget != null
+                            && memory.breakTarget.getWorld() == mob.getWorld()
+                            && mob.getLocation().distanceSquared(memory.breakTarget.clone().add(.5, .5, .5)) <= 10.0) {
+                        Block activeBlock = mob.getWorld().getBlockAt(memory.breakTarget);
+                        if (MiningPolicy.mayBreak(mob, activeBlock)
+                                && game.insideDestruction(activeBlock.getLocation())) {
+                            tryMine(mob, anchor, memory, activeBlock);
+                            miningSlots--;
+                            continue;
+                        }
+                        memory.breakTarget = null;
+                        memory.breakTicks = 0;
+                    }
+                    BreachPlanner.Plan plan = planner.find(mob, anchor);
+                    if (plan != null && plan.breakThis() != null) {
+                        Block targetBlock = plan.breakThis();
+                        if (mob.getLocation().distanceSquared(targetBlock.getLocation().add(.5, .5, .5)) <= 10.0) {
+                            tryMine(mob, anchor, memory, targetBlock);
+                        } else if (plan.standHere().distanceSquared(mob.getLocation()) > 1) {
+                            mob.getPathfinder().moveTo(plan.standHere(), 1.0);
+                        }
+                        miningSlots--;
+                    } else if (plan != null && plan.standHere() != null) {
+                        mob.getPathfinder().moveTo(plan.standHere(), 1.0);
+                        memory.breakTarget = null;
+                        memory.breakTicks = 0;
+                    }
+                }
             } else {
                 memory.breakTarget = null;
                 memory.breakTicks = 0;
@@ -84,13 +116,21 @@ public final class SiegeBrain {
         }
     }
 
-    private Player chooseTarget(Mob mob) {
+    private Player chooseTarget(Mob mob, Memory memory) {
         Player current = mob.getTarget() instanceof Player player ? player : null;
         double pursuit = plugin.getConfig().getDouble("ai.pursuit-radius", 20);
         if (current != null && game.alive(current.getUniqueId())
                 && current.getWorld() == mob.getWorld()
-                && current.getLocation().distanceSquared(mob.getLocation()) <= pursuit * pursuit)
-            return current;
+                && current.getLocation().distanceSquared(mob.getLocation()) <= pursuit * pursuit) {
+            if (mob.hasLineOfSight(current)) {
+                memory.lostTargetTicks = 0;
+                return current;
+            }
+            // A player hiding behind a wall must not indefinitely distract the siege.
+            int maxLost = Math.max(1, plugin.getConfig().getInt("ai.lost-target-seconds", 6)) * 2;
+            if (++memory.lostTargetTicks < maxLost) return current;
+        }
+        memory.lostTargetTicks = 0;
         double radius = plugin.getConfig().getDouble("ai.detection-radius", 12);
         Player nearest = null;
         double nearestDistance = radius * radius;
@@ -137,8 +177,7 @@ public final class SiegeBrain {
         return true;
     }
 
-    private boolean tryMine(Mob mob, Location anchor, Memory memory) {
-        Block block = forwardBlock(mob, anchor);
+    private boolean tryMine(Mob mob, Location anchor, Memory memory, Block block) {
         if (block == null || !game.insideDestruction(block.getLocation())) return false;
         if (!MiningPolicy.mayBreak(mob, block)) return false;
         Location target = block.getLocation();
@@ -167,10 +206,17 @@ public final class SiegeBrain {
                 memory.breakTarget = null;
                 return true;
             }
-            SiegeBlockBreakEvent event = new SiegeBlockBreakEvent(mob, block);
-            Bukkit.getPluginManager().callEvent(event);
-            if (!event.isCancelled() && game.journalMobBreak(block)) {
-                block.setType(Material.AIR, false); // No drops, no neighbor updates where possible.
+            if (!regionProtectionDetected() && canBreakEntireStructure(mob, block)) {
+                SiegeBlockBreakEvent event = new SiegeBlockBreakEvent(mob, block);
+                Bukkit.getPluginManager().callEvent(event);
+                if (!event.isCancelled() && game.journalMobBreak(block)) {
+                    Block other = matchingDoorHalf(block);
+                    if (other == null || game.journalMobBreak(other)) {
+                        // Multi-block doors must be journaled and broken as a unit.
+                        block.setType(Material.AIR, false);
+                        if (other != null) other.setType(Material.AIR, false);
+                    }
+                }
             }
             memory.breakTarget = null;
             memory.breakTicks = 0;
@@ -180,6 +226,32 @@ public final class SiegeBrain {
         return true;
     }
 
+    private boolean regionProtectionDetected() {
+        if (!plugin.getConfig().getBoolean("mining.deny-if-protection-plugin-present", true))
+            return false;
+        // Never bypass claims by assuming a plugin-issued BlockBreakEvent is a player break.
+        for (String name : List.of("WorldGuard", "GriefPrevention", "Lands", "Towny",
+                "Residence", "GriefDefender", "ClaimChunk")) {
+            if (Bukkit.getPluginManager().getPlugin(name) != null) return true;
+        }
+        return false;
+    }
+
+    private boolean canBreakEntireStructure(Mob mob, Block block) {
+        Block other = matchingDoorHalf(block);
+        return other == null || (game.insideDestruction(other.getLocation())
+                && MiningPolicy.mayBreak(mob, other));
+    }
+
+    private Block matchingDoorHalf(Block block) {
+        BlockData data = block.getBlockData();
+        if (!(data instanceof org.bukkit.block.data.type.Door door)) return null;
+        Block other = block.getRelative(door.getHalf() == Bisected.Half.TOP
+                ? BlockFace.DOWN : BlockFace.UP);
+        if (other.getType() != block.getType()) return null;
+        return other;
+    }
+
     private static final class Memory {
         Location last;
         Location breakTarget;
@@ -187,6 +259,7 @@ public final class SiegeBrain {
         int stillTicks;
         int pathTick;
         int breakTicks;
+        int lostTargetTicks;
         Memory(Location initial) { last = initial.clone(); }
     }
 }

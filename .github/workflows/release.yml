@@ -1,7 +1,11 @@
 name: Publish versioned release
 
-# Publishing is deliberately manual: pushes/PRs only produce CI artifacts.
+# Publishing requires manual dispatch from main OR an explicit version-named beta branch.
+# Ordinary pushes to main and PRs never publish releases.
 on:
+  push:
+    branches:
+      - 'release/MSS-*'
   workflow_dispatch:
     inputs:
       minecraft_version:
@@ -10,12 +14,12 @@ on:
         type: string
         default: '26.2'
       plugin_version:
-        description: 'MSS plugin version, e.g. 1.1'
+        description: 'Plugin version, e.g. 0.1-beta or 1.1'
         required: true
         type: string
-        default: '1.1'
+        default: '0.1-beta'
       paper_build:
-        description: 'Stable Paper API build suffix, e.g. 129-stable for 26.2'
+        description: 'Stable Paper API build suffix, e.g. 129-stable for 26.2 (verify against Paper)'
         required: true
         type: string
         default: '129-stable'
@@ -45,16 +49,31 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
-            echo 'Publish releases from main only.' >&2
+          if [[ "$GITHUB_REF" == refs/heads/release/MSS-* ]]; then
+            # Beta release branches are an auditable, no-credential-needed way to
+            # trigger a pre-release from a reviewed commit using the GitHub connector.
+            VERSION_FROM_BRANCH="${GITHUB_REF#refs/heads/release/MSS-}"
+            if [[ ! "$VERSION_FROM_BRANCH" =~ ^([0-9]{2}\.[0-9]+)\.([0-9]+\.[0-9]+(-[a-z][a-z0-9.-]*)?)$ ]]; then
+              echo "Invalid release branch: $VERSION_FROM_BRANCH" >&2
+              exit 1
+            fi
+            MC_VERSION="${BASH_REMATCH[1]}"
+            PLUGIN_VERSION="${BASH_REMATCH[2]}"
+            if [[ "$MC_VERSION" != "26.2" || "$PLUGIN_VERSION" != *-beta ]]; then
+              echo 'Branch-triggered publication currently accepts 26.2 beta builds only.' >&2
+              exit 1
+            fi
+            PAPER_BUILD='129-stable'
+          elif [[ "$GITHUB_REF" != 'refs/heads/main' ]]; then
+            echo 'Manual releases must run from main; release branches only publish a 26.2 beta.' >&2
             exit 1
           fi
           if [[ ! "$MC_VERSION" =~ ^[0-9]{2}\.[0-9]+(\.[0-9]+)?$ ]]; then
             echo 'Minecraft version must look like 26.2 or 26.1.2.' >&2
             exit 1
           fi
-          if [[ ! "$PLUGIN_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
-            echo 'Plugin version must look like 1.1 or 1.1.2.' >&2
+          if [[ ! "$PLUGIN_VERSION" =~ ^[0-9]+\.[0-9]+(\.[0-9]+)?(-[a-z][a-z0-9.-]*)?$ ]]; then
+            echo 'Plugin version must look like 0.1-beta, 1.1 or 1.1.2.' >&2
             exit 1
           fi
           if [[ ! "$PAPER_BUILD" =~ ^[1-9][0-9]*-stable$ ]]; then
@@ -62,6 +81,8 @@ jobs:
             exit 1
           fi
           echo "tag=MSS-${MC_VERSION}.${PLUGIN_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "mc_version=$MC_VERSION" >> "$GITHUB_OUTPUT"
+          echo "plugin_version=$PLUGIN_VERSION" >> "$GITHUB_OUTPUT"
           echo "paper_api=${MC_VERSION}.build.${PAPER_BUILD}" >> "$GITHUB_OUTPUT"
 
       - name: Check out repository
@@ -82,8 +103,8 @@ jobs:
 
       - name: Build and test against requested Paper API
         env:
-          MC_VERSION: ${{ inputs.minecraft_version }}
-          PLUGIN_VERSION: ${{ inputs.plugin_version }}
+          MC_VERSION: ${{ steps.release.outputs.mc_version }}
+          PLUGIN_VERSION: ${{ steps.release.outputs.plugin_version }}
           PAPER_API: ${{ steps.release.outputs.paper_api }}
         shell: bash
         run: |
@@ -95,8 +116,8 @@ jobs:
 
       - name: Verify published JAR name and plugin.yml metadata
         env:
-          MC_VERSION: ${{ inputs.minecraft_version }}
-          PLUGIN_VERSION: ${{ inputs.plugin_version }}
+          MC_VERSION: ${{ steps.release.outputs.mc_version }}
+          PLUGIN_VERSION: ${{ steps.release.outputs.plugin_version }}
         run: |
           python3 - <<'PY'
           import os
@@ -121,8 +142,8 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-          MC_VERSION: ${{ inputs.minecraft_version }}
-          PLUGIN_VERSION: ${{ inputs.plugin_version }}
+          MC_VERSION: ${{ steps.release.outputs.mc_version }}
+          PLUGIN_VERSION: ${{ steps.release.outputs.plugin_version }}
           PAPER_API: ${{ steps.release.outputs.paper_api }}
           RELEASE_TAG: ${{ steps.release.outputs.tag }}
           PRERELEASE: ${{ inputs.prerelease }}
@@ -151,7 +172,7 @@ jobs:
           Back up your world before testing. Read the repository README for limitations.
           EOF
           flags=()
-          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
+          if [[ "$PRERELEASE" == true || "$PLUGIN_VERSION" == *-* ]]; then flags+=(--prerelease); fi
           gh release create "$RELEASE_TAG" "build/libs/$RELEASE_TAG.jar" \
             --title "$RELEASE_TAG" --target "$GITHUB_SHA" \
             --notes-file release-notes.md "${flags[@]}"

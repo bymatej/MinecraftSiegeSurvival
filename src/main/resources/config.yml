@@ -21,6 +21,7 @@ waves:
   player-scaling: 0.45
   max-enemies-per-wave: 120
   max-active-mobs: 40
+  max-wave-seconds: 600 # abort stalled waves, not an automatic victory
   spawn-batch-size: 5
 mobs:
   zombie: true
@@ -32,5 +33,6 @@ ai:
   lost-target-seconds: 6
   door-opening: true
 mining:
-  enabled: false # EXPERIMENTAL. Enable only on a disposable/backed-up world.
+  enabled: true # BETA: modifies existing-world blocks. Always back up worlds before matches.
   max-concurrent-miners: 8
+  deny-if-protection-plugin-present: true # refuse to bypass known claim plugins

@@ -18,7 +18,8 @@ public final class MiningPolicy {
             Material.STONE, Material.COBBLESTONE, Material.COBBLED_DEEPSLATE,
             Material.DEEPSLATE, Material.STONE_BRICKS, Material.CRACKED_STONE_BRICKS,
             Material.MOSSY_STONE_BRICKS, Material.ANDESITE, Material.DIORITE, Material.GRANITE,
-            Material.BRICKS, Material.TUFF, Material.SANDSTONE, Material.RED_SANDSTONE);
+            Material.BRICKS, Material.TUFF, Material.SANDSTONE, Material.RED_SANDSTONE,
+            Material.IRON_DOOR, Material.IRON_TRAPDOOR);
     private MiningPolicy() { }
 
     public static boolean mayBreak(Mob mob, Block block) {
@@ -45,7 +46,7 @@ public final class MiningPolicy {
     /** Estimated ticks for a normally equipped player; no player potion/status effects. */
     public static int estimatedTicks(Block block, ItemStack tool) {
         double hardness = Math.max(0.1, block.getType().getHardness());
-        double destroySpeed = Math.max(0.1, block.getBlockData().getDestroySpeed(tool, true));
+        double destroySpeed = Math.max(0.1, block.getDestroySpeed(tool, true));
         boolean correct = block.getBlockData().isPreferredTool(tool);
         return (int) Math.ceil(hardness * (correct ? 30 : 100) / destroySpeed);
     }
