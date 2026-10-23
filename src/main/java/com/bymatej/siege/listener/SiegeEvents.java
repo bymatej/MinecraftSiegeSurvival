@@ -71,6 +71,10 @@ public final class SiegeEvents implements Listener {
     }
 
     @EventHandler public void postRespawn(PlayerPostRespawnEvent event) {
+        if (!game.running()) {
+            game.recoverIfNeeded(event.getPlayer());
+            return;
+        }
         if (game.running() && game.eliminated(event.getPlayer().getUniqueId())) {
             event.getPlayer().setGameMode(GameMode.SPECTATOR);
             Player follow = game.livingOnline().stream().findFirst().orElse(null);
@@ -83,7 +87,10 @@ public final class SiegeEvents implements Listener {
     }
 
     @EventHandler public void join(PlayerJoinEvent event) {
-        if (game.running()) Bukkit.getScheduler().runTask(plugin, () -> game.joined(event.getPlayer()));
+        Bukkit.getScheduler().runTask(plugin, () -> {
+            if (game.running()) game.joined(event.getPlayer());
+            else game.recoverIfNeeded(event.getPlayer());
+        });
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

@@ -60,7 +60,7 @@ Movement boundary is **off** before the first wave, including throughout prepara
 - The initial mining implementation is limited and intentionally conservative; its timing is approximate rather than a verified replication of every vanilla enchantment/tool calculation.
 - Block changes are not restored automatically. Do not run an active siege on an irreplaceable base.
 - No creative mode during a match; original player game modes and locations are restored on normal cleanup.
-- Unexpected server termination cannot reliably restore temporary player modes in all cases until crash-recovery work is complete.
+- Original game modes and locations are journaled to a server-local recovery file. They are restored on join or post-respawn after interruptions; terrain and inventory are not rolled back.
 - Other region protection plugins do not automatically authorize plugin-made block changes. Use an empty test world until integrated.
 - Servers running on **Peaceful** are not supported for sieges. Difficulty isn't forcibly changed globally.
 - To test concurrency or difficult structures, use a separate Paper test server.
