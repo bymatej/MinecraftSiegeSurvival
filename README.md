@@ -71,7 +71,7 @@ Pin a **real stable Paper API build for that Minecraft version**; changing the a
 
 **Beta example:** Select Minecraft `26.2`, plugin `0.1-beta`, Paper build `129-stable`, with **Pre-release** enabled. This generates `MSS-26.2.0.1-beta.jar` with tag/title `MSS-26.2.0.1-beta`. The prefix is **MSS**, not MMC.
 
-The workflow is deliberately **manual**; normal pushes do not publish releases. Existing release tags are never overwritten. It uses GitHub's ephemeral `GITHUB_TOKEN` with only the required repository content permission; no personal token or secret is committed.
+Normal commits never publish releases. Releases can be started manually from Actions; a reviewed beta may also be published from an explicitly named `release/MSS-26.2.0.1-beta` branch. Such release branches always publish a pre-release. Existing release tags are never overwritten. It uses GitHub's ephemeral `GITHUB_TOKEN` with only the required repository content permission; no personal token or secret is committed.
 
 Never test block-breaking features on a world without backups. Mob-mined simple blocks are journaled for best-effort restoration on match end/restart, but the plugin does **not** promise complete terrain rollback.
 
