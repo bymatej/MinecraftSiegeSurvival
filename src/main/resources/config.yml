@@ -33,6 +33,6 @@ ai:
   lost-target-seconds: 6
   door-opening: true
 mining:
-  enabled: false # EXPERIMENTAL. Enable only on a disposable/backed-up world.
+  enabled: true # BETA: modifies existing-world blocks. Always back up worlds before matches.
   max-concurrent-miners: 8
   deny-if-protection-plugin-present: true # refuse to bypass known claim plugins
