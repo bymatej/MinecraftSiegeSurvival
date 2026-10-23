@@ -1,6 +1,7 @@
 name: Publish versioned release
 
-# Publishing is deliberately manual: pushes/PRs only produce CI artifacts.
+# Publishing requires manual dispatch from main OR an explicit version-named beta branch.
+# Ordinary pushes to main and PRs never publish releases.
 on:
   push:
     branches:
