@@ -25,6 +25,7 @@ import java.util.*;
 public final class SiegeGame {
     private final SiegePlugin plugin;
     private final NamespacedKey mobTag;
+    private final RecoveryStore recovery;
     private final Random random = new Random();
     private final LinkedHashMap<UUID, PlayerRecord> players = new LinkedHashMap<>();
     private final Map<UUID, PlayerRecord> visitors = new LinkedHashMap<>();
@@ -43,6 +44,7 @@ public final class SiegeGame {
 
     public SiegeGame(SiegePlugin plugin) {
         this.plugin = plugin;
+        this.recovery = new RecoveryStore(plugin);
         this.mobTag = new NamespacedKey(plugin, "siege_match_mob");
         this.radius = plugin.getConfig().getInt("arena.movement-radius", 200);
         if (plugin.getConfig().getBoolean("mobs.zombie", true)) allowed.add(EntityType.ZOMBIE);
@@ -123,7 +125,11 @@ public final class SiegeGame {
         players.clear();
         visitors.clear();
         mobs.clear();
-        for (Player player : Bukkit.getOnlinePlayers()) players.put(player.getUniqueId(), new PlayerRecord(player));
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            PlayerRecord record = new PlayerRecord(player);
+            players.put(player.getUniqueId(), record);
+            recovery.remember(record);
+        }
         initialPlayers = players.size();
         state = prepMinutes > 0 ? SiegeState.PREPARING : SiegeState.INTERMISSION;
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -280,7 +286,9 @@ public final class SiegeGame {
         if (!running()) return;
         PlayerRecord record = players.get(player.getUniqueId());
         if (record == null) {
-            visitors.put(player.getUniqueId(), new PlayerRecord(player));
+            PlayerRecord visitor = new PlayerRecord(player);
+            visitors.put(player.getUniqueId(), visitor);
+            recovery.remember(visitor);
             player.teleport(anchor);
             player.setGameMode(GameMode.SPECTATOR);
             player.sendMessage("Siege already active. You are spectating until the next match.");
@@ -345,24 +353,14 @@ public final class SiegeGame {
         pending = 0; wave = 0; seconds = 0; anchor = null;
     }
 
+    public void recoverIfNeeded(Player player) {
+        if (!running()) recovery.restore(player);
+    }
+
     private void restore(PlayerRecord record) {
         Player player = Bukkit.getPlayer(record.id());
-        if (player == null || !player.isOnline()) return;
-        player.leaveVehicle();
-        if (!player.isDead()) {
-            player.teleport(record.before());
-            player.setGameMode(record.gameMode());
-        } else {
-            // Post-respawn restoration is required for a player who died on the final tick.
-            if (plugin.isEnabled()) {
-                Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                    if (!running() && player.isOnline() && !player.isDead()) {
-                        player.teleport(record.before());
-                        player.setGameMode(record.gameMode());
-                    }
-                }, 40L);
-            }
-        }
+        if (player != null && player.isOnline()) recovery.restore(player);
+        // Dead/offline players are restored on post-respawn or next join.
     }
 
     private void broadcast(String text) { Bukkit.broadcastMessage("[Siege] " + text); }
