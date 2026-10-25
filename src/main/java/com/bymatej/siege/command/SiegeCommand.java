@@ -1,11 +1,11 @@
 package com.bymatej.siege.command;
 
 import com.bymatej.siege.SiegePlugin;
+import com.bymatej.siege.game.MobType;
+import com.bymatej.siege.game.MobTypes;
 import com.bymatej.siege.game.SiegeGame;
 import org.bukkit.Bukkit;
-import org.bukkit.Material;
 import org.bukkit.command.*;
-import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.*;
 import org.bukkit.event.inventory.InventoryClickEvent;
@@ -28,7 +28,7 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
     @Override public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
             sender.sendMessage("/siege setup | anchor | start [waves] | start prep [minutes] [waves]");
-            sender.sendMessage("/siege radius <blocks> | status | stop");
+            sender.sendMessage("/siege radius <blocks> | status | stop | glow [on|off]");
             return true;
         }
         String action = args[0].toLowerCase(Locale.ROOT);
@@ -36,6 +36,17 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
         if (action.equals("stop") && !(sender instanceof Player)) {
             if (game.running()) game.stop("Match stopped from server console.");
             else sender.sendMessage("No match is active.");
+            return true;
+        }
+        if (action.equals("glow")) {
+            // The console may always do this; a player needs the admin permission.
+            if (sender instanceof Player player
+                    && plugin.getConfig().getBoolean("permissions.require-admin", true)
+                    && !player.hasPermission("siege.admin")) {
+                sender.sendMessage("You need the siege.admin permission.");
+                return true;
+            }
+            sender.sendMessage(glowAction(args));
             return true;
         }
         if (!(sender instanceof Player player)) {
@@ -58,7 +69,7 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
                 }
             }
             case "start" -> {
-                int waves = plugin.getConfig().getInt("game.default-waves", 25);
+                int waves = plugin.getConfig().getInt("game.default-waves", 10);
                 int prep = 0;
                 try {
                     if (args.length >= 2 && args[1].equalsIgnoreCase("prep")) {
@@ -78,19 +89,42 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
         return true;
     }
 
+    /** The nine roster slots of the enemy menu: three rows of three. */
+    private static final int[] ROSTER_SLOTS = {10, 11, 12, 19, 20, 21, 28, 29, 30};
+
+    /**
+     * /siege glow [on|off] - without an argument the glow is toggled. The
+     * glowing enemies can be found through walls, so a wave that is nearly
+     * cleared does not have to run into its timeout.
+     */
+    private String glowAction(String[] args) {
+        GlowArgument argument = GlowArgument.parse(args.length > 1 ? args[1] : null);
+        return switch (argument) {
+            case TOGGLE -> game.toggleGlow();
+            case ON -> game.setGlow(true);
+            case OFF -> game.setGlow(false);
+            case INVALID -> "Usage: /siege glow [on|off]";
+        };
+    }
+
     private void showMenu(Player player) {
-        Inventory inventory = Bukkit.createInventory(null, 27, "Siege: enabled enemies");
-        fill(inventory, 11, Material.ROTTEN_FLESH, "Zombies", game.allowed(EntityType.ZOMBIE));
-        fill(inventory, 13, Material.BONE, "Skeletons", game.allowed(EntityType.SKELETON));
-        fill(inventory, 15, Material.CROSSBOW, "Pillagers", game.allowed(EntityType.PILLAGER));
+        Inventory inventory = Bukkit.createInventory(null, 54, "Siege: enabled enemies");
+        MobType[] types = MobType.values();
+        for (int index = 0; index < types.length && index < ROSTER_SLOTS.length; index++) {
+            fill(inventory, ROSTER_SLOTS[index], types[index]);
+        }
         menus.add(inventory);
         player.openInventory(inventory);
     }
 
-    private void fill(Inventory inventory, int slot, Material material, String name, boolean enabled) {
-        ItemStack item = new ItemStack(material);
+    private void fill(Inventory inventory, int slot, MobType type) {
+        ItemStack item = new ItemStack(MobTypes.icon(type));
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(name + (enabled ? " [ENABLED]" : " [DISABLED]"));
+        meta.setDisplayName(type.display() + (game.allowed(type) ? " [ENABLED]" : " [DISABLED]"));
+        List<String> lore = new ArrayList<>();
+        lore.add(type.lastWaveOnly() ? "Only in the final wave" : "Appears from wave " + type.minWave());
+        if (type.cap() > 0) lore.add("At most " + type.cap() + " per wave");
+        meta.setLore(lore);
         item.setItemMeta(meta);
         inventory.setItem(slot, item);
     }
@@ -104,12 +138,7 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
         event.setCancelled(true);
         if (!(event.getWhoClicked() instanceof Player player)) return;
         if (event.getClickedInventory() != event.getView().getTopInventory()) return;
-        EntityType type = switch (event.getSlot()) {
-            case 11 -> EntityType.ZOMBIE;
-            case 13 -> EntityType.SKELETON;
-            case 15 -> EntityType.PILLAGER;
-            default -> null;
-        };
+        MobType type = rosterType(event.getSlot());
         if (type == null) return;
         if (plugin.getConfig().getBoolean("permissions.require-admin", true)
                 && !player.hasPermission("siege.admin")) return;
@@ -122,10 +151,21 @@ public final class SiegeCommand implements CommandExecutor, TabCompleter, Listen
         });
     }
 
+    /** The roster type shown in a menu slot, or null for an empty slot. */
+    private static MobType rosterType(int slot) {
+        for (int index = 0; index < ROSTER_SLOTS.length; index++) {
+            if (ROSTER_SLOTS[index] != slot) continue;
+            MobType[] types = MobType.values();
+            return index < types.length ? types[index] : null;
+        }
+        return null;
+    }
+
     @Override public List<String> onTabComplete(CommandSender sender, Command command,
                                                   String alias, String[] args) {
-        if (args.length == 1) return List.of("help", "setup", "anchor", "start", "radius", "status", "stop");
-        if (args.length == 2 && args[0].equalsIgnoreCase("start")) return List.of("prep", "25", "10");
+        if (args.length == 1) return List.of("help", "setup", "anchor", "start", "radius", "status", "stop", "glow");
+        if (args.length == 2 && args[0].equalsIgnoreCase("start")) return List.of("prep", "10", "5");
+        if (args.length == 2 && args[0].equalsIgnoreCase("glow")) return List.of("on", "off");
         return Collections.emptyList();
     }
 }

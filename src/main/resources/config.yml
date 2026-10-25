@@ -2,37 +2,63 @@
 permissions:
   require-admin: true
 game:
-  default-waves: 25
+  default-waves: 10
   max-waves: 100
   preparation-minutes: 10
-  intermission-seconds: 30
+  intermission-seconds: 10
+  countdown-seconds: 5 # on-screen countdown before the next wave starts
+  status-interval-seconds: 0 # chat summary of the enemy counters; 0 = off (the action bar always shows them)
   reconnect-grace-seconds: 60
 arena:
-  movement-radius: 200
-  combat-radius: 220
-  destruction-radius: 64
-  spawn-min-distance: 40
-  spawn-max-distance: 72
+  movement-radius: 60 # player boundary around the anchor
+  combat-radius: 80 # mobs may engage here; also the maximum for /siege radius
+  destruction-radius: 60 # mobs may mine only within this radius
+  spawn-min-distance: 20
+  spawn-max-distance: 55 # clamped to the movement radius; enemies must be reachable
+  spawn-vertical-range: 8 # how far above/below the anchor level enemies may spawn
   natural-spawns: false
   rollback-mob-damage: true # Restore journaled mob-mined simple blocks on stop/restart.
 waves:
   base-enemies: 5
   growth-per-wave: 1.3
-  player-scaling: 0.45
   max-enemies-per-wave: 120
   max-active-mobs: 40
-  max-wave-seconds: 600 # abort stalled waves, not an automatic victory
+  max-wave-seconds: 1200 # abort stalled waves after 20 minutes, not an automatic victory
+  glow-after-seconds: 300 # enemies of a wave running this long start glowing
   spawn-batch-size: 5
 mobs:
-  zombie: true
-  skeleton: true
-  pillager: true
+  # Every type unlocks in a fixed wave, so a match escalates gradually.
+  zombie: true          # wave 1
+  skeleton: true        # wave 1
+  pillager: true        # wave 2
+  vindicator: true      # wave 3
+  wither_skeleton: true # wave 4
+  piglin_brute: true    # wave 5
+  blaze: true           # wave 6
+  creeper: true         # wave 7 - explodes, but never damages the terrain
+  ravager: false        # final wave only, at most one per wave (mini-boss)
+  random-equipment: true # mobs carry weapons and tools and really use them
+  equipment-chance: 0.45 # how often a melee mob gets a weapon or a tool
+  shield-chance: 0.25 # how often a melee mob carries a shield it raises while fighting
 ai:
-  detection-radius: 12
-  pursuit-radius: 20
+  detection-radius: 24
+  pursuit-radius: 32
+  path-speed: 1.25 # movement speed multiplier while advancing on the anchor
   lost-target-seconds: 6
   door-opening: true
+  ladder-climbing: true # mobs climb ladders to reach an anchor that is above them
+  require-line-of-sight: false # mobs hunt a player they cannot see, so a box is no safe spot
+  jump-over-gaps: true # mobs jump one block gaps and one block steps
+  building-enabled: true # mobs may place blocks to bridge gaps and to build themselves up
+  building-from-wave-percent: 75 # building themselves up (tower climbing) starts in the last quarter of the waves
+  building-after-seconds: 300 # ...and after this many seconds into a wave as well (the same moment the enemies start glowing): a player who hides on a roof is reached anyway; 0 = only in the last quarter
+  bridging-from-wave-percent: 0 # bridging a gap works from the first wave; 0 = from the start
+  desperate-after-seconds: 600 # after this many seconds in a wave a stuck mob digs through anything (even stone with bare hands); 0 = never, -1 = always
+  desperate-break-factor: 2.0 # how much slower a desperate break with bare hands is
+  debug-logging: false # logs what every mob is doing (goal, stuck, mining) once per second
 mining:
   enabled: true # BETA: modifies existing-world blocks. Always back up worlds before matches.
   max-concurrent-miners: 8
   deny-if-protection-plugin-present: true # refuse to bypass known claim plugins
+  ravager-smashes-blocks: true # a charging ravager breaks simple blocks inside the destruction radius
+  late-breach-speed: 2.0 # how much faster the mobs break walls in the last quarter of the waves

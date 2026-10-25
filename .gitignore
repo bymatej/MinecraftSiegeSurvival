@@ -26,6 +26,7 @@ gradle-app.setting
 # Local Minecraft test server / generated state
 run/
 server/
+local-server/
 logs/
 crash-reports/
 world/
